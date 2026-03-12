@@ -1,0 +1,786 @@
+{
+  "product": {
+    "name": "CandidaturaBandi",
+    "version": "1.0.0",
+    "description": "Piattaforma digitale per la gestione del ciclo di vita delle candidature a bandi pubblici. Mette in comunicazione due attori principali: il Beneficiario (es. Comune) che compila e invia la candidatura tramite wizard guidato, e il Controllore (es. Regione) che configura il bando, valuta le candidature ricevute e le trasmette alla piattaforma esterna SONAR.",
+    "tech_stack": {
+      "frontend": "React + TypeScript + Tailwind CSS",
+      "ui_library": "shadcn/ui",
+      "routing": "React Router v6",
+      "state_management": "Zustand",
+      "forms": "React Hook Form + Zod",
+      "charts": "Recharts",
+      "maps": "Google Maps API",
+      "backend": "Supabase (auth + database + storage)",
+      "database": "PostgreSQL (via Supabase)",
+      "file_storage": "Supabase Storage",
+      "notifications": "Supabase Realtime + email via Resend"
+    },
+    "design_system": {
+      "primary_color": "#1B3A6B",
+      "secondary_color": "#2E5FA3",
+      "accent_color": "#D6E4F7",
+      "background": "#F4F6FB",
+      "success": "#27AE60",
+      "warning": "#F39C12",
+      "danger": "#C0392B",
+      "font": "Inter",
+      "border_radius": "8px",
+      "style": "Clean, professional, government-grade. Minimal animations. High information density. Navy blue as dominant color."
+    }
+  },
+
+  "user_roles": [
+    {
+      "id": "beneficiario",
+      "label": "Beneficiario",
+      "description": "Ente pubblico (es. Comune) che si candida a un bando. Accede al wizard di candidatura, compila tutte le sezioni e invia la candidatura al controllore.",
+      "permissions": [
+        "view_own_applications",
+        "create_application",
+        "edit_draft_application",
+        "submit_application",
+        "upload_attachments",
+        "view_own_notifications",
+        "manage_own_profile"
+      ]
+    },
+    {
+      "id": "controllore_responsabile",
+      "label": "Responsabile Bando",
+      "description": "Utente dell'ente controllore con pieno accesso: configura bandi, valuta candidature, approva/respinge, invia a SONAR.",
+      "permissions": [
+        "create_bando",
+        "edit_bando",
+        "publish_bando",
+        "view_all_applications",
+        "assign_applications",
+        "approve_application",
+        "reject_application",
+        "request_changes",
+        "send_to_sonar",
+        "manage_users",
+        "view_audit_log",
+        "export_reports"
+      ]
+    },
+    {
+      "id": "controllore_valutatore",
+      "label": "Valutatore",
+      "description": "Utente dell'ente controllore con accesso in lettura e possibilità di aggiungere note interne. Non può approvare/respingere.",
+      "permissions": [
+        "view_all_applications",
+        "add_internal_notes",
+        "download_attachments",
+        "view_audit_log"
+      ]
+    },
+    {
+      "id": "controllore_osservatore",
+      "label": "Osservatore",
+      "description": "Accesso in sola lettura alle candidature.",
+      "permissions": [
+        "view_all_applications"
+      ]
+    }
+  ],
+
+  "data_models": {
+    "Bando": {
+      "description": "Rappresenta un bando pubblico configurato dal Controllore",
+      "fields": {
+        "id": "uuid",
+        "titolo": "string",
+        "descrizione": "text",
+        "ente_gestore": "string",
+        "data_apertura": "date",
+        "data_chiusura": "date",
+        "stato": "enum[bozza, in_revisione, pubblicato, sospeso, chiuso]",
+        "versione": "integer",
+        "obiettivi": "Obiettivo[]",
+        "priorita": "Priorita[]",
+        "criteri_ammissibilita": "CriterioAmmissibilita[]",
+        "settori_intervento": "SettoreIntervento[]",
+        "allegati_richiesti": "AllegatoRichiesto[]",
+        "indicatori_output": "Indicatore[]",
+        "indicatori_risultato": "Indicatore[]",
+        "created_at": "timestamp",
+        "updated_at": "timestamp"
+      }
+    },
+    "Obiettivo": {
+      "fields": {
+        "id": "uuid",
+        "bando_id": "uuid",
+        "titolo": "string",
+        "descrizione": "text",
+        "icona": "string",
+        "max_selezionabili": "integer",
+        "ordine": "integer"
+      }
+    },
+    "Priorita": {
+      "fields": {
+        "id": "uuid",
+        "bando_id": "uuid",
+        "titolo": "string",
+        "descrizione": "text",
+        "obiettivo_id": "uuid (FK nullable)"
+      }
+    },
+    "CriterioAmmissibilita": {
+      "fields": {
+        "id": "uuid",
+        "bando_id": "uuid",
+        "domanda": "text",
+        "esempio": "text",
+        "is_escludente": "boolean",
+        "ordine": "integer"
+      }
+    },
+    "SettoreIntervento": {
+      "fields": {
+        "id": "uuid",
+        "bando_id": "uuid",
+        "codice": "string",
+        "descrizione": "string",
+        "importo_min": "numeric nullable",
+        "importo_max": "numeric nullable",
+        "abilitato": "boolean"
+      }
+    },
+    "AllegatoRichiesto": {
+      "fields": {
+        "id": "uuid",
+        "bando_id": "uuid",
+        "nome": "string",
+        "descrizione": "text",
+        "formato_accettato": "string[]",
+        "dimensione_max_mb": "integer",
+        "obbligatorio": "boolean",
+        "ordine": "integer"
+      }
+    },
+    "Indicatore": {
+      "fields": {
+        "id": "uuid",
+        "bando_id": "uuid",
+        "tipo": "enum[output, risultato]",
+        "nome": "string",
+        "unita_misura": "string",
+        "range_min": "numeric nullable",
+        "range_max": "numeric nullable",
+        "obiettivo_id": "uuid nullable"
+      }
+    },
+    "Candidatura": {
+      "description": "La candidatura inviata dal beneficiario su un bando specifico",
+      "fields": {
+        "id": "uuid",
+        "bando_id": "uuid",
+        "ente_beneficiario_id": "uuid",
+        "nome": "string",
+        "settore_comunale": "string",
+        "referenti": "Referente[]",
+        "stato": "enum[bozza, in_lavorazione, pending, in_revisione, approvata, respinta, trasmessa_sonar]",
+        "data_invio": "timestamp nullable",
+        "data_approvazione": "timestamp nullable",
+        "assegnato_a": "uuid nullable (FK utente_controllore)",
+        "motivazione_rifiuto": "text nullable",
+        "sonar_transmission_id": "string nullable",
+        "sonar_transmission_status": "enum[non_trasmessa, in_corso, completata, errore] default non_trasmessa",
+        "sonar_transmission_at": "timestamp nullable",
+        "wizard_step_corrente": "integer default 1",
+        "created_at": "timestamp",
+        "updated_at": "timestamp"
+      }
+    },
+    "Referente": {
+      "fields": {
+        "id": "uuid",
+        "candidatura_id": "uuid",
+        "nome": "string",
+        "cognome": "string",
+        "email": "string",
+        "telefono": "string",
+        "prefisso": "string"
+      }
+    },
+    "LocalizzazioneProgetto": {
+      "fields": {
+        "id": "uuid",
+        "candidatura_id": "uuid",
+        "via": "string",
+        "numero_civico": "string",
+        "cap": "string",
+        "citta": "string",
+        "provincia": "string",
+        "lat": "numeric",
+        "lng": "numeric"
+      }
+    },
+    "CoerenzaStrategica": {
+      "fields": {
+        "id": "uuid",
+        "candidatura_id": "uuid",
+        "obiettivi_selezionati": "uuid[]",
+        "priorita_selezionate": "uuid[]",
+        "descrizione_coerenza": "text",
+        "risposte_ammissibilita": "RispostaAmmissibilita[]",
+        "settori_con_importo": "SettoreImporto[]"
+      }
+    },
+    "RispostaAmmissibilita": {
+      "fields": {
+        "criterio_id": "uuid",
+        "risposta": "boolean"
+      }
+    },
+    "SettoreImporto": {
+      "fields": {
+        "settore_id": "uuid",
+        "importo": "numeric"
+      }
+    },
+    "ProgettoSelezionato": {
+      "description": "Progetto/analisi CUP associato alla candidatura",
+      "fields": {
+        "id": "uuid",
+        "candidatura_id": "uuid",
+        "cup": "string",
+        "nome_progetto": "string",
+        "descrizione_breve": "text",
+        "categoria_principale": "string",
+        "finalita": "text",
+        "stato_avanzamento": "string",
+        "settore": "string",
+        "tipo_intervento": "string",
+        "durata_lavori_mesi": "integer",
+        "inizio_lavori": "date",
+        "valutazione_allineamento": "enum[positivo, neutro, negativo]",
+        "criteri_selezione": "enum[soddisfatti, parziali, non_soddisfatti]",
+        "ammissibilita_tecnica": "enum[soddisfatti, parziali, non_soddisfatti]",
+        "stato_avanzamento_rating": "enum[ottimo, buono, sufficiente, critico]",
+        "cba_presente": "boolean",
+        "cantierabilita": "enum[compatibile, da_verificare, critica]",
+        "is_ad_hoc": "boolean default false",
+        "ordine": "integer"
+      }
+    },
+    "CronoprogrammaFinanziario": {
+      "fields": {
+        "id": "uuid",
+        "progetto_id": "uuid",
+        "anno": "integer",
+        "trimestre": "integer",
+        "importo": "numeric"
+      }
+    },
+    "CronoprogrammaProcedurale": {
+      "fields": {
+        "id": "uuid",
+        "progetto_id": "uuid",
+        "tipo": "enum[lavori_pubblici, beni_servizi, avvisi]",
+        "fase": "string",
+        "anno": "integer",
+        "trimestre": "integer",
+        "selezionato": "boolean"
+      }
+    },
+    "IndicatoreCompilato": {
+      "fields": {
+        "id": "uuid",
+        "progetto_id": "uuid",
+        "indicatore_id": "uuid",
+        "tipo": "enum[output, risultato]",
+        "target": "numeric nullable",
+        "flag": "enum[compilato, non_rilevante, non_applicabile]"
+      }
+    },
+    "QuadroEconomico": {
+      "fields": {
+        "id": "uuid",
+        "candidatura_id": "uuid",
+        "intervento_nome": "string",
+        "costo_totale_milioni": "numeric",
+        "quota_pr_fesr": "numeric",
+        "altre_fonti": "numeric"
+      }
+    },
+    "AllegatoCaricato": {
+      "fields": {
+        "id": "uuid",
+        "candidatura_id": "uuid",
+        "allegato_richiesto_id": "uuid",
+        "nome_file": "string",
+        "url_storage": "string",
+        "formato": "string",
+        "dimensione_bytes": "integer",
+        "uploaded_at": "timestamp"
+      }
+    },
+    "NotaInterna": {
+      "fields": {
+        "id": "uuid",
+        "candidatura_id": "uuid",
+        "autore_id": "uuid",
+        "testo": "text",
+        "risolta": "boolean default false",
+        "created_at": "timestamp"
+      }
+    },
+    "AuditLog": {
+      "fields": {
+        "id": "uuid",
+        "utente_id": "uuid",
+        "azione": "string",
+        "entita_tipo": "string",
+        "entita_id": "uuid",
+        "dettaglio": "jsonb",
+        "ip_address": "string",
+        "created_at": "timestamp"
+      }
+    },
+    "SonarTransmissionLog": {
+      "fields": {
+        "id": "uuid",
+        "candidatura_id": "uuid",
+        "tentativo": "integer",
+        "stato": "enum[successo, errore]",
+        "payload": "jsonb",
+        "response": "jsonb",
+        "error_message": "text nullable",
+        "created_at": "timestamp"
+      }
+    }
+  },
+
+  "pages": {
+    "auth": {
+      "login": {
+        "route": "/login",
+        "description": "Pagina di login con email/password. Link per registrazione e recupero password. Badge SPID.",
+        "components": ["LoginForm", "SpidButton", "ForgotPasswordLink"]
+      },
+      "register": {
+        "route": "/register",
+        "description": "Registrazione beneficiario: Ragione Sociale, CF/PIVA, PEC, Nome/Cognome rappresentante legale. Validazione PIVA in tempo reale.",
+        "components": ["RegisterForm", "PIVAValidator"]
+      }
+    },
+
+    "beneficiario": {
+      "dashboard": {
+        "route": "/dashboard",
+        "description": "Dashboard principale beneficiario. Sezione 'In Evidenza' con 3 card candidature recenti (stato, tipo intervento, settore, prossima task). Lista 'Le tue candidature' con filtri pills (In lavorazione, Approvate, Pending, Respinte) e tabella paginata (colonne: Nome, Data, Prossima Scadenza colorata in rosso se urgente, Stato badge, Proprietario, Attività). Pulsante 'Inizia la candidatura'.",
+        "components": ["CandidatureInEvidenzaSection", "CandidatureTable", "StatusBadge", "DeadlineAlert"]
+      },
+      "candidature_list": {
+        "route": "/candidature",
+        "description": "Lista completa candidature con filtri avanzati, ricerca testuale e paginazione configurabile.",
+        "components": ["FilterPills", "SearchBar", "CandidatureTable", "Pagination"]
+      },
+      "wizard": {
+        "route": "/candidature/nuova",
+        "description": "Wizard guidato multi-step per la compilazione della candidatura. Sidebar sinistra mostra step con stato (completato/corrente/bloccato). Salvataggio automatico. Ogni step ha area contenuto centrale e navigazione Avanti/Indietro.",
+        "steps": [
+          {
+            "id": 1,
+            "nome": "Onboarding",
+            "route": "/candidature/nuova/intro",
+            "description": "Pagina fullscreen introduttiva. Titolo 'LA CANDIDATURA'. 3 colonne card: Perché è utile (con checkmark list), In cosa consiste (con steps numerati 1-4), Tips per la compilazione (con bulb icons). CTA 'COMINCIAMO' in fondo."
+          },
+          {
+            "id": 2,
+            "nome": "Selezione Bando",
+            "route": "/candidature/nuova/bando",
+            "description": "Lista dei bandi attivi pubblicati. Card per ogni bando con titolo, descrizione, scadenza, settori. Selezione singola."
+          },
+          {
+            "id": 3,
+            "nome": "Informazioni Generali > Anagrafica",
+            "sidebar_section": "INFORMAZIONI GENERALI",
+            "sidebar_subsection": "Anagrafica",
+            "description": "Domanda: 'Per prima cosa: che nome vuoi dare alla tua candidatura?' Campo testo con placeholder suggerimento. Breadcrumb in alto mostra risposte precedenti."
+          },
+          {
+            "id": 4,
+            "nome": "Informazioni Generali > Ente presentante",
+            "sidebar_section": "INFORMAZIONI GENERALI",
+            "sidebar_subsection": "Anagrafica",
+            "description": "Domanda: 'Chi presenta questa candidatura?' Dropdown con enti associati al profilo utente."
+          },
+          {
+            "id": 5,
+            "nome": "Informazioni Generali > Settore",
+            "sidebar_section": "INFORMAZIONI GENERALI",
+            "sidebar_subsection": "Anagrafica",
+            "description": "Domanda: 'Qual è l'area o il settore comunale responsabile?' Dropdown settori."
+          },
+          {
+            "id": 6,
+            "nome": "Informazioni Generali > Referenti",
+            "sidebar_section": "INFORMAZIONI GENERALI",
+            "sidebar_subsection": "Referenti",
+            "description": "Domanda: 'Chi contattare per eventuali comunicazioni?' Form con Nome, Cognome, Email, Prefisso+Telefono. Link 'Aggiungi' per più referenti."
+          },
+          {
+            "id": 7,
+            "nome": "Localizzazione",
+            "sidebar_section": "LOCALIZZAZIONE",
+            "sidebar_subsection": "Area geografica",
+            "description": "Mappa Google Maps interattiva con pin trascinabile. Sotto: campi auto-compilati Via, N°, CAP, Città, Provincia. Breadcrumb in alto mostra indirizzo selezionato."
+          },
+          {
+            "id": 8,
+            "nome": "Coerenza Strategica > Obiettivi",
+            "sidebar_section": "COERENZA SRATEGICA",
+            "sidebar_subsection": "Obiettivi",
+            "description": "Domanda: 'A quale obiettivo fa riferimento il tuo progetto?' Grid 3x2 di card selezionabili con checkbox, icona, titolo, descrizione. Carousel con frecce se più di 6. Generato dinamicamente dagli obiettivi configurati nel bando."
+          },
+          {
+            "id": 9,
+            "nome": "Coerenza Strategica > Descrizione coerenza",
+            "sidebar_section": "COERENZA SRATEGICA",
+            "sidebar_subsection": "Obiettivi",
+            "description": "Domanda: 'Fornisci ora una breve descrizione che illustri la coerenza tra progetto e obiettivo'. Textarea grande con contatore caratteri. Link 'Mostrami degli esempi di descrizione efficace' apre popup."
+          },
+          {
+            "id": 10,
+            "nome": "Coerenza Strategica > Priorità",
+            "sidebar_section": "COERENZA SRATEGICA",
+            "sidebar_subsection": "Priorità",
+            "description": "Domanda: 'Quali sono le priorità a cui contribuisce il progetto?' Grid 3x2 card selezionabili. Carousel. Generato dalle priorità del bando."
+          },
+          {
+            "id": 11,
+            "nome": "Coerenza Strategica > Criteri ammissibilità",
+            "sidebar_section": "COERENZA SRATEGICA",
+            "sidebar_subsection": "Criteri di ammissibilità",
+            "description": "Lista di domande Sì/No con numero progressivo, testo domanda, esempio esplicativo. Radio button Sì/No per ognuna. Se risposta No su criterio escludente: blocco con messaggio errore. Badge finale: Ammissibile / Non ammissibile."
+          },
+          {
+            "id": 12,
+            "nome": "Coerenza Strategica > Settori e importi",
+            "sidebar_section": "COERENZA SRATEGICA",
+            "sidebar_subsection": "Settori e importi",
+            "description": "Tabella: Codice | Settore d'intervento | Importo indicativo (€). Riga totale automatica. Generata dai settori abilitati nel bando."
+          },
+          {
+            "id": 13,
+            "nome": "Descrizione Progetto > Selezione progetti",
+            "sidebar_section": "DESCRIZIONE DEL PROGETTO",
+            "sidebar_subsection": "Selezione progetti",
+            "description": "Biforcazione: 2 CTA grandi 'VOGLIO SCEGLIERE TRA ANALISI GIÀ CREATE' (dark) e 'VOGLIO CREARE UN PROGETTO AD HOC' (outline). Se scelta lista esistente: filtri Data/Settore/Sotto-Settore/Categoria/Tipo intervento + ricerca. Tab 'Analisi consigliate' e 'Tutte le progettualità'. Lista con checkbox, CUP, data, descrizione, settore, tipo intervento, durata, inizio lavori."
+          },
+          {
+            "id": 14,
+            "nome": "Descrizione Progetto > Verifica allineamento",
+            "sidebar_section": "DESCRIZIONE DEL PROGETTO",
+            "sidebar_subsection": "Selezione progetti",
+            "description": "Per ogni progetto selezionato: scheda sinistra con dati progetto (nome, descrizione, categoria, finalità, stato). Pannello destra con valutazione AI automatica: Allineamento obiettivi (Positivo/Negativo), Criteri selezione, Ammissibilità tecnica, Stato avanzamento, CBA, Cantierabilità — ognuno con badge colorato. Frecce navigazione prev/next tra progetti."
+          },
+          {
+            "id": 15,
+            "nome": "Cronoprogrammi > Finanziario complessivo",
+            "sidebar_section": "CRONOPROGRAMMI",
+            "sidebar_subsection": "Finanziario complessivo",
+            "description": "Per ogni intervento/CUP: griglia anni × trimestri (4 col per anno). Campi numerici editabili. Totale automatico. Ripetuto per ogni progetto nella candidatura."
+          },
+          {
+            "id": 16,
+            "nome": "Cronoprogrammi > Procedurale Lavori Pubblici",
+            "sidebar_section": "CRONOPROGRAMMI",
+            "sidebar_subsection": "Procedurale - lavori pubblici",
+            "description": "Gantt interattivo. Righe: Fattibilità tecnico economica, Progettazione esecutiva, Verifica e validazione progettazione, Approvazione intervento, Esecuzione procedure di gara, Stipula contratto, Esecuzione lavori, Conclusione lavori e collaudo. Colonne: trimestri per anno. Click cella per selezionare (colore fill blu-lavanda). Scroll orizzontale."
+          },
+          {
+            "id": 17,
+            "nome": "Cronoprogrammi > Procedurale Beni e Servizi",
+            "sidebar_section": "CRONOPROGRAMMI",
+            "sidebar_subsection": "Procedurale - acquisto beni e servizi",
+            "description": "Gantt interattivo. Righe: Approvazione intervento, Esecuzione procedure di gara, Stipula contratto, Realizzazione servizi/acquisto beni, Conclusione amministrativa intervento."
+          },
+          {
+            "id": 18,
+            "nome": "Cronoprogrammi > Procedurale Avvisi",
+            "sidebar_section": "CRONOPROGRAMMI",
+            "sidebar_subsection": "Procedurale - avvisi",
+            "description": "Gantt interattivo. Righe: Pubblicazione avviso, Approvazione graduatoria, Stipula contratto, Conclusione amministrativa intervento."
+          },
+          {
+            "id": 19,
+            "nome": "Indicatori > Output",
+            "sidebar_section": "INDICATORI E RISULTATI ATTESI",
+            "sidebar_subsection": "Indicatori di output",
+            "description": "Tabella: Indicatore | UdM | Target. Per ogni riga: campo numerico oppure dropdown 'Non rilevante'/'Non applicabile'. Generata dagli indicatori output configurati nel bando."
+          },
+          {
+            "id": 20,
+            "nome": "Indicatori > Risultato",
+            "sidebar_section": "INDICATORI E RISULTATI ATTESI",
+            "sidebar_subsection": "Indicatori di risultato",
+            "description": "Stessa struttura indicatori output ma per indicatori di risultato (cambiamenti attesi contesto socio-economico)."
+          },
+          {
+            "id": 21,
+            "nome": "Quadro Economico",
+            "sidebar_section": "QUADRO ECONOMICO",
+            "description": "Tabella editabile: Intervento | Costo (M€) | PR FESR (€) | Altre fonti (€). Riga 'Valore totale degli interventi' calcolata automaticamente. Link 'Aggiungi' per nuove righe."
+          },
+          {
+            "id": 22,
+            "nome": "Allegati Obbligatori",
+            "sidebar_section": "ALLEGATI OBBLIGATORI",
+            "description": "Lista allegati richiesti dal bando. Per ognuno: nome, descrizione, formato accettato, pulsante 'CARICA' (dark) con icona upload. Checkmark verde quando caricato. Messaggio introduttivo motivazionale."
+          },
+          {
+            "id": 23,
+            "nome": "Riepilogo e Invio",
+            "description": "Pagina riepilogo scrollabile. Tutte le sezioni collassabili con icona edit. CTA 'Hai verificato tutti i dati?' → pulsante Invia. Modal conferma prima dell'invio definitivo."
+          }
+        ]
+      }
+    },
+
+    "controllore": {
+      "dashboard": {
+        "route": "/controllore/dashboard",
+        "description": "Dashboard controllore. In alto: valutazioni progettuali con card in evidenza (CUP, stato badge, settore, durata). Al centro: sezione 'Monitoraggio candidature' (widget Operazioni in ritardo con milestone e badge Ritardo, Prossime scadenze con timeline a date, Verifiche richieste con motivazione). A destra: sezione Candidature con card in evidenza e lista ultime candidature.",
+        "components": ["ValutazioniProgettualiSection", "MonitoraggioWidget", "CandidatureInEvidenzaSection", "UltimeCandidatureTable"]
+      },
+      "bandi_config": {
+        "bandi_list": {
+          "route": "/controllore/bandi",
+          "description": "Lista bandi con filtri stato, pulsante 'Crea nuovo bando'."
+        },
+        "bando_wizard": {
+          "route": "/controllore/bandi/nuovo",
+          "description": "Wizard creazione/modifica bando. Step: 1) Info generali (titolo, descrizione, date), 2) Obiettivi strategici (CRUD con drag-and-drop), 3) Priorità, 4) Criteri ammissibilità (CRUD con toggle escludente), 5) Settori intervento (tabella codici), 6) Allegati richiesti (CRUD), 7) Indicatori output, 8) Indicatori risultato, 9) Anteprima e pubblicazione."
+        }
+      },
+      "candidature": {
+        "list": {
+          "route": "/controllore/candidature",
+          "description": "Lista candidature ricevute. Filtri: Stato, Bando, Comune, Settore, Assegnatario. Tabella: Nome, Data invio, Stato badge, Comune, Settore, Prossima scadenza, Assegnatario. Export CSV. Ricerca testuale."
+        },
+        "detail": {
+          "route": "/controllore/candidature/:id",
+          "description": "Pagina dettaglio candidatura. Header: titolo, stato badge colorato, breadcrumb. Info strip: Presentata da, Settore responsabile, Referenti di contatto (con occhio per mostrare contatti), Localizzazione. Tab orizzontali: Coerenza Strategica, Descrizione del progetto, Cronoprogrammi, Indicatori, Quadro economico, Allegati. Menu azione (•••): Richiedi modifica, Accetta, Respingi, Assegna, Condividi.",
+          "tabs": {
+            "coerenza_strategica": "Mostra obiettivo progetto, descrizione coerenza, priorità, rispetti criteri ammissibilità con checkmark, settori e importi indicativi.",
+            "descrizione_progetto": "Per ogni progetto selezionato: dati anagrafici CUP + pannello valutazione automatica allineamento strategia urbana (Positivo/Soddisfatti/Buono/Presente/Compatibile con badge colorati). Link 'Apri dettaglio progetto'.",
+            "cronoprogrammi": "Selector intervento (dropdown CUP). Per ogni intervento: cronoprogramma finanziario, Gantt lavori pubblici, Gantt beni servizi, Gantt avvisi. Tutti in sola lettura.",
+            "indicatori": "Selector intervento. Tabella indicatori output e tabella indicatori risultato con target compilati dal beneficiario.",
+            "quadro_economico": "Tabella Intervento | Costo M€ | PR FESR | Altre fonti | Totale. Sola lettura.",
+            "allegati": "Lista allegati caricati. Per ognuno: nome file, tipo, pulsante SCARICA (dark). Pulsante 'Scarica tutti (ZIP)'."
+          }
+        }
+      },
+      "sonar": {
+        "description": "Pulsante 'Invia a SONAR' visibile solo su candidature approvate. Click apre modal con preview dati, checkbox conferma e CTA. Feedback esito (banner verde/rosso). Log trasmissioni in tab dedicata."
+      },
+      "settings": {
+        "route": "/controllore/settings",
+        "description": "Impostazioni piattaforma: gestione utenti ente (CRUD con ruoli), configurazione API SONAR (endpoint, API key), preferenze notifiche, log audit (tabella filtrata con export CSV)."
+      }
+    }
+  },
+
+  "key_components": {
+    "WizardSidebar": "Sidebar sinistra nel wizard candidatura. Mostra sezioni principali (uppercase) e sottosezioni. Ogni item ha: cerchio con stato (completato=check blu, corrente=filled blu, futuro=outline grigio), etichetta. Sezioni completate collassabili con freccia.",
+    "WizardBreadcrumb": "Barra sopra la domanda corrente. Mostra domanda precedente + risposta data (es. 'Chi presenta questa candidatura? → Comune di Vibo Valentia'). Freccia su per scrollare al breadcrumb completo.",
+    "StatusBadge": "Badge colorato per stato candidatura: In lavorazione (blu scuro), Approvata (verde), Pending (arancio), Respinta (rosso).",
+    "GanttGrid": "Componente griglia interattiva. Props: righe (fasi), anni, callback onCellToggle. Click cella toggle colore blu-lavanda (#B0BEE8). Scroll orizzontale con sticky prima colonna.",
+    "AllineamentoPanel": "Pannello destro nella scheda verifica progetto. Mostra 5-6 dimensioni (Allineamento obiettivi, Criteri selezione, Ammissibilità tecnica, Stato avanzamento, CBA, Cantierabilità) ognuna con icona status (verde/giallo/rosso), label e descrizione.",
+    "FileUploadRow": "Riga upload allegato. Props: nome, descrizione, formato, onUpload. Mostra stato: da caricare / caricato (checkmark verde).",
+    "CronoprogrammaFinanziarioGrid": "Griglia anni-trimestri per importi finanziari. Intestazioni anni in blu. 4 celle per anno (1°-4° trimestre). Input numerico in ogni cella.",
+    "NotaInternaCard": "Card per nota interna controllore. Mostra autore, timestamp, testo, pulsante Risolvi.",
+    "SonarModal": "Modal conferma invio SONAR. Preview dati strutturata, checkbox obbligatorio 'Ho verificato i dati', CTA Conferma/Annulla.",
+    "AuditLogTable": "Tabella log audit con filtri. Colonne: Timestamp, Utente, Azione, Entità, Dettaglio. Export CSV."
+  },
+
+  "navigation": {
+    "beneficiario_sidebar": [
+      { "label": "Dashboard", "icon": "LayoutDashboard", "route": "/dashboard" },
+      { "label": "PMO", "icon": "FolderKanban", "route": "/pmo" },
+      { "label": "Pianificazione operativa", "icon": "Calendar", "route": "/pianificazione", "section": "ALTRO" },
+      { "label": "Valutazione progettuale", "icon": "BarChart2", "route": "/valutazione" },
+      { "label": "Documenti collaborativi", "icon": "FileText", "route": "/documenti" }
+    ],
+    "controllore_sidebar": [
+      { "label": "Dashboard", "icon": "LayoutDashboard", "route": "/controllore/dashboard" },
+      { "label": "Bandi", "icon": "Megaphone", "route": "/controllore/bandi" },
+      { "label": "Candidature", "icon": "InboxIcon", "route": "/controllore/candidature" },
+      { "label": "Impostazioni", "icon": "Settings", "route": "/controllore/settings" }
+    ],
+    "topbar": {
+      "left": "Logo placeholder + toggle sidebar",
+      "right": "Bell icon notifiche + Avatar utente con dropdown (Profilo, Logout)"
+    }
+  },
+
+  "epics": [
+    {
+      "id": "EP-01",
+      "title": "Autenticazione & Gestione Utenti",
+      "user_stories": [
+        { "id": "US-001", "role": "Beneficiario", "story": "Voglio registrarmi inserendo ragione sociale, CF/PIVA, PEC e dati del rappresentante legale", "acceptance_criteria": ["Form con validazione CF/PIVA in tempo reale", "Email di conferma con link attivazione", "Account in stato 'in attesa di verifica'"], "priority": "Alta", "points": 8 },
+        { "id": "US-002", "role": "Controllore", "story": "Voglio ricevere notifica quando un nuovo beneficiario si registra per approvare/rifiutare l'accesso", "acceptance_criteria": ["Notifica email + alert dashboard", "Pulsanti Approva/Rifiuta con motivazione", "Email automatica al beneficiario"], "priority": "Alta", "points": 5 },
+        { "id": "US-003", "role": "Beneficiario", "story": "Voglio accedere con email/password o SPID", "acceptance_criteria": ["Login classico + 2FA opzionale", "Integrazione SPID Livello 2", "Blocco dopo 5 tentativi"], "priority": "Alta", "points": 13 },
+        { "id": "US-004", "role": "Controllore", "story": "Voglio creare account per operatori interni con ruoli (Responsabile, Valutatore, Osservatore)", "acceptance_criteria": ["Pannello gestione utenti", "Ruoli con permessi differenziati", "Log audit per ruolo"], "priority": "Alta", "points": 8 },
+        { "id": "US-005", "role": "Beneficiario", "story": "Voglio gestire il profilo del mio ente (dati anagrafici, referenti, PEC)", "acceptance_criteria": ["Modifica con storico", "Validazione PEC", "Referenti multipli"], "priority": "Media", "points": 5 }
+      ]
+    },
+    {
+      "id": "EP-02",
+      "title": "Configurazione Bando (Controllore)",
+      "user_stories": [
+        { "id": "US-006", "role": "Controllore", "story": "Voglio creare un nuovo bando con titolo, descrizione, ente gestore, date apertura/chiusura", "acceptance_criteria": ["Wizard a step", "Validazione date", "Stato iniziale Bozza", "Salvataggio intermedio"], "priority": "Alta", "points": 8 },
+        { "id": "US-007", "role": "Controllore", "story": "Voglio configurare obiettivi strategici selezionabili dal beneficiario", "acceptance_criteria": ["CRUD obiettivi", "Icona + descrizione", "Drag-and-drop ordine", "Min/max selezionabili"], "priority": "Alta", "points": 8 },
+        { "id": "US-008", "role": "Controllore", "story": "Voglio definire le priorità strategiche regionali del bando", "acceptance_criteria": ["CRUD priorità", "Collegamento a obiettivi", "Preview lato beneficiario"], "priority": "Alta", "points": 5 },
+        { "id": "US-009", "role": "Controllore", "story": "Voglio configurare criteri di ammissibilità come domande Sì/No con testo esplicativo", "acceptance_criteria": ["Editor WYSIWYG", "Toggle escludente", "Anteprima form"], "priority": "Alta", "points": 8 },
+        { "id": "US-010", "role": "Controllore", "story": "Voglio configurare settori di intervento con codici e importi indicativi", "acceptance_criteria": ["Import CSV codici", "Abilitazione/disabilitazione codici", "Importo min/max per codice"], "priority": "Alta", "points": 8 },
+        { "id": "US-011", "role": "Controllore", "story": "Voglio definire gli allegati obbligatori con tipo file, descrizione e formato", "acceptance_criteria": ["CRUD allegati", "Formato/dimensione max", "Allegato opzionale flag"], "priority": "Alta", "points": 5 },
+        { "id": "US-012", "role": "Controllore", "story": "Voglio configurare indicatori di output e risultato con unità di misura", "acceptance_criteria": ["CRUD indicatori", "Tipo output/risultato", "Associazione a obiettivi"], "priority": "Alta", "points": 8 },
+        { "id": "US-013", "role": "Controllore", "story": "Voglio pubblicare il bando rendendolo visibile ai beneficiari", "acceptance_criteria": ["Check pre-pubblicazione", "Transizioni stato Bozza→Pubblicato", "Notifica ai beneficiari"], "priority": "Alta", "points": 5 },
+        { "id": "US-014", "role": "Controllore", "story": "Voglio creare una nuova versione del bando senza cancellare quello precedente", "acceptance_criteria": ["Versioning automatico", "Candidature agganciate a versione originale", "Notifica ai beneficiari"], "priority": "Media", "points": 8 }
+      ]
+    },
+    {
+      "id": "EP-03",
+      "title": "Wizard Candidatura (Beneficiario)",
+      "user_stories": [
+        { "id": "US-015", "story": "Pagina onboarding wizard con 3 colonne: Perché, Come, Tips + CTA Cominciamo", "priority": "Alta", "points": 3 },
+        { "id": "US-016", "story": "Selezione bando attivo da lista con filtri e preview", "priority": "Alta", "points": 5 },
+        { "id": "US-017", "story": "Nome candidatura + ente presentante (dropdown)", "priority": "Alta", "points": 3 },
+        { "id": "US-018", "story": "Referenti con form validato + possibilità più referenti", "priority": "Alta", "points": 3 },
+        { "id": "US-019", "story": "Settore comunale responsabile dropdown", "priority": "Alta", "points": 2 },
+        { "id": "US-020", "story": "Localizzazione su mappa interattiva con auto-compilazione indirizzo", "priority": "Alta", "points": 8 },
+        { "id": "US-021", "story": "Selezione obiettivi strategici con card selezionabili", "priority": "Alta", "points": 5 },
+        { "id": "US-022", "story": "Textarea descrizione coerenza con esempi popup", "priority": "Alta", "points": 5 },
+        { "id": "US-023", "story": "Selezione priorità strategiche con card selezionabili", "priority": "Alta", "points": 5 },
+        { "id": "US-024", "story": "Risposte Sì/No criteri ammissibilità con blocco su escludente", "priority": "Alta", "points": 5 },
+        { "id": "US-025", "story": "Selezione settori intervento con importi indicativi e totale automatico", "priority": "Alta", "points": 5 },
+        { "id": "US-026", "story": "Biforcazione: scegli progetto esistente vs crea ad hoc", "priority": "Alta", "points": 8 },
+        { "id": "US-027", "story": "Scheda verifica progetto con valutazione allineamento automatica", "priority": "Alta", "points": 8 },
+        { "id": "US-028", "story": "Cronoprogramma finanziario complessivo (griglia anni x trimestri)", "priority": "Alta", "points": 8 },
+        { "id": "US-029", "story": "Cronoprogramma procedurale lavori pubblici (Gantt interattivo)", "priority": "Alta", "points": 13 },
+        { "id": "US-030", "story": "Cronoprogramma procedurale acquisto beni e servizi", "priority": "Alta", "points": 8 },
+        { "id": "US-031", "story": "Cronoprogramma procedurale avvisi", "priority": "Media", "points": 5 },
+        { "id": "US-032", "story": "Indicatori output con target o flag non rilevante/non applicabile", "priority": "Alta", "points": 5 },
+        { "id": "US-033", "story": "Indicatori risultato con target o flag", "priority": "Alta", "points": 5 },
+        { "id": "US-034", "story": "Quadro economico: tabella interventi con costo, FESR, altre fonti, totale", "priority": "Alta", "points": 8 },
+        { "id": "US-035", "story": "Upload allegati obbligatori con progress bar e validazione", "priority": "Alta", "points": 8 },
+        { "id": "US-036", "story": "Riepilogo scrollabile con sezioni collassabili e CTA invio", "priority": "Alta", "points": 5 },
+        { "id": "US-037", "story": "Salvataggio automatico bozza con ripresa dall'ultimo step", "priority": "Alta", "points": 5 },
+        { "id": "US-038", "story": "Invio definitivo con modal conferma, email conferma e stato Pending", "priority": "Alta", "points": 5 }
+      ]
+    },
+    {
+      "id": "EP-04",
+      "title": "Dashboard Beneficiario",
+      "user_stories": [
+        { "id": "US-039", "story": "Sezione In Evidenza con 3 card candidature recenti (stato, tipo, settore, prossima task)", "priority": "Alta", "points": 5 },
+        { "id": "US-040", "story": "Lista completa candidature con filtri pills, ricerca, tabella paginata", "priority": "Alta", "points": 8 },
+        { "id": "US-041", "story": "Notifiche in-app e email per cambio stato e task assegnati", "priority": "Alta", "points": 8 },
+        { "id": "US-042", "story": "Scadenza bando in rosso se ≤7 giorni, alert banner", "priority": "Media", "points": 3 }
+      ]
+    },
+    {
+      "id": "EP-05",
+      "title": "Monitoraggio Candidature (Controllore)",
+      "user_stories": [
+        { "id": "US-043", "story": "Lista candidature con filtri avanzati ed export CSV", "priority": "Alta", "points": 8 },
+        { "id": "US-044", "story": "Dettaglio candidatura a tab con tutte le sezioni in sola lettura", "priority": "Alta", "points": 8 },
+        { "id": "US-045", "story": "Assegnazione candidatura a valutatore interno con notifica", "priority": "Alta", "points": 5 },
+        { "id": "US-046", "story": "Richiesta modifica/integrazione al beneficiario con motivazione", "priority": "Alta", "points": 8 },
+        { "id": "US-047", "story": "Accettazione candidatura con cambio stato e notifica", "priority": "Alta", "points": 5 },
+        { "id": "US-048", "story": "Rifiuto candidatura con motivazione obbligatoria e notifica", "priority": "Alta", "points": 5 },
+        { "id": "US-049", "story": "Condivisione link temporaneo 48h in sola lettura", "priority": "Bassa", "points": 5 },
+        { "id": "US-050", "story": "Download tutti gli allegati in ZIP con struttura a cartelle", "priority": "Media", "points": 3 }
+      ]
+    },
+    {
+      "id": "EP-06",
+      "title": "Integrazione SONAR",
+      "user_stories": [
+        { "id": "US-051", "story": "Pulsante 'Invia a SONAR' visibile solo su candidature Approvate", "priority": "Alta", "points": 3 },
+        { "id": "US-052", "story": "Modal conferma con preview dati e checkbox obbligatorio", "priority": "Alta", "points": 5 },
+        { "id": "US-053", "story": "Chiamata API REST a SONAR con retry automatico (max 3)", "priority": "Alta", "points": 13 },
+        { "id": "US-054", "story": "Feedback visivo esito trasmissione (banner verde/rosso) e aggiornamento stato", "priority": "Alta", "points": 5 },
+        { "id": "US-055", "story": "Pulsante 'Riprova invio' in caso di errore trasmissione", "priority": "Alta", "points": 5 },
+        { "id": "US-056", "story": "Mappatura campi candidatura → campi SONAR configurabile in settings", "priority": "Alta", "points": 8 }
+      ]
+    },
+    {
+      "id": "EP-07",
+      "title": "Dashboard Controllore & Monitoraggio",
+      "user_stories": [
+        { "id": "US-057", "story": "Widget operazioni in ritardo, prossime scadenze, verifiche richieste", "priority": "Alta", "points": 8 },
+        { "id": "US-058", "story": "Statistiche aggregate candidature per stato e settore con grafico", "priority": "Media", "points": 8 },
+        { "id": "US-059", "story": "Alert candidatura Pending da più di X giorni (configurabile)", "priority": "Media", "points": 5 }
+      ]
+    },
+    {
+      "id": "EP-08",
+      "title": "Comunicazione & Collaborazione",
+      "user_stories": [
+        { "id": "US-060", "story": "Thread messaggi per candidatura con notifica email e allegati", "priority": "Media", "points": 8 },
+        { "id": "US-061", "story": "Note interne visibili solo al controllore con autore e timestamp", "priority": "Media", "points": 5 },
+        { "id": "US-062", "story": "Chat di supporto in-app con bot FAQ ed escalation a operatore", "priority": "Bassa", "points": 8 }
+      ]
+    },
+    {
+      "id": "EP-09",
+      "title": "Audit, Log & Sicurezza",
+      "user_stories": [
+        { "id": "US-063", "story": "Log audit immutabile con filtri ed export CSV, retention 5 anni", "priority": "Alta", "points": 8 },
+        { "id": "US-064", "story": "Cifratura TLS 1.3 in transito e AES-256 a riposo", "priority": "Alta", "points": 8 },
+        { "id": "US-065", "story": "Export PDF candidatura con timbro Approvata/Respinta", "priority": "Media", "points": 8 }
+      ]
+    }
+  ],
+
+  "mock_data": {
+    "bando_esempio": {
+      "id": "bando-001",
+      "titolo": "Bando FESR Calabria 21-27 – Sviluppo Urbano Sostenibile",
+      "ente_gestore": "Regione Calabria",
+      "data_apertura": "2025-03-01",
+      "data_chiusura": "2025-09-30",
+      "stato": "pubblicato",
+      "obiettivi": [
+        { "titolo": "Rigenerare spazi urbani in abbandono o sottoutilizzati", "icona": "building" },
+        { "titolo": "Promuovere la mobilità sostenibile e intermodale", "icona": "bike" },
+        { "titolo": "Valorizzare il patrimonio culturale e naturale urbano", "icona": "landmark" },
+        { "titolo": "Migliorare la qualità e l'accessibilità dei servizi pubblici", "icona": "hospital" },
+        { "titolo": "Digitalizzare processi e infrastrutture urbane", "icona": "cpu" },
+        { "titolo": "Rafforzare la resilienza urbana al cambiamento climatico", "icona": "leaf" }
+      ],
+      "priorita": [
+        { "titolo": "Rigenerazione urbana e ambientale" },
+        { "titolo": "Sostenibilità energetica e ambientale" },
+        { "titolo": "Mobilità urbana sostenibile" },
+        { "titolo": "Inclusione sociale e abitativa" },
+        { "titolo": "Valorizzazione del patrimonio culturale" },
+        { "titolo": "Economia locale e innovazione" }
+      ]
+    },
+    "candidatura_esempio": {
+      "id": "cand-001",
+      "nome": "Candidatura #01 - Mobilità dolce e percorsi ciclabili",
+      "stato": "in_lavorazione",
+      "ente": "Comune di Vibo Valentia",
+      "settore_comunale": "Settore mobilità e trasporti",
+      "prossima_scadenza": "2025-07-25",
+      "prossima_azione": "Inserimento delle relazioni tecniche",
+      "referente": { "nome": "Mario", "cognome": "Rossi", "email": "mario.rossi@email.com", "telefono": "+39 333 44 55 777" }
+    },
+    "utenti_esempio": [
+      { "nome": "Marco Rossi", "ruolo": "beneficiario", "ente": "Comune di Vibo Valentia" },
+      { "nome": "Sergio Bianchi", "ruolo": "controllore_responsabile", "ente": "Regione Calabria" },
+      { "nome": "Guido di Toro Mammarella", "ruolo": "beneficiario", "ente": "Comune di Vibo Valentia" }
+    ]
+  }
+}
